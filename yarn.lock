@@ -2,34 +2,26 @@
 # yarn lockfile v1
 
 
-asap@~2.0.3:
-  version "2.0.5"
-  resolved "https://registry.yarnpkg.com/asap/-/asap-2.0.5.tgz#522765b50c3510490e52d7dcfe085ef9ba96958f"
-
-component-type@1.1.0:
-  version "1.1.0"
-  resolved "https://registry.yarnpkg.com/component-type/-/component-type-1.1.0.tgz#95b666aad53e5c8d1f2be135c45b5d499197c0c5"
-
-idb-range@^3.0.0:
-  version "3.1.3"
-  resolved "https://registry.yarnpkg.com/idb-range/-/idb-range-3.1.3.tgz#fa15a8baeeb3056d5ebed7c76acf4f92e96438e2"
+"@types/service_worker_api@^0.0.9":
+  version "0.0.9"
+  resolved "https://registry.yarnpkg.com/@types/service_worker_api/-/service_worker_api-0.0.9.tgz#7269ff2fa0e27e23a38a22e8909534f63823dee8"
   dependencies:
-    is-plain-obj "^1.1.0"
+    "@types/whatwg-fetch" "*"
 
-is-plain-obj@^1.1.0:
-  version "1.1.0"
-  resolved "https://registry.yarnpkg.com/is-plain-obj/-/is-plain-obj-1.1.0.tgz#71a50c8429dfca773c92a390a4a03b39fcd51d3e"
-
-promise@^7.0.4:
-  version "7.1.1"
-  resolved "https://registry.yarnpkg.com/promise/-/promise-7.1.1.tgz#489654c692616b8aa55b0724fa809bb7db49c5bf"
+"@types/whatwg-fetch@*":
+  version "0.0.33"
+  resolved "https://registry.yarnpkg.com/@types/whatwg-fetch/-/whatwg-fetch-0.0.33.tgz#19c0d2863c8cb2380f21a1c736b79cbf7895bb13"
   dependencies:
-    asap "~2.0.3"
+    "@types/whatwg-streams" "*"
 
-treo@^0.5.1:
-  version "0.5.1"
-  resolved "https://registry.yarnpkg.com/treo/-/treo-0.5.1.tgz#e90427889fbf991f2e01468c71cfa8013dcd362b"
-  dependencies:
-    component-type "1.1.0"
-    idb-range "^3.0.0"
-    promise "^7.0.4"
+"@types/whatwg-streams@*":
+  version "0.0.3"
+  resolved "https://registry.yarnpkg.com/@types/whatwg-streams/-/whatwg-streams-0.0.3.tgz#4853d869f3e26d5adfd0d9407b6edce716d06bfe"
+
+treo-promise@1.0.1:
+  version "1.0.1"
+  resolved "https://registry.yarnpkg.com/treo-promise/-/treo-promise-1.0.1.tgz#e64234ae0756179c8bbc4c5a308883450eb14271"
+
+typescript@^2.3.2:
+  version "2.3.2"
+  resolved "https://registry.yarnpkg.com/typescript/-/typescript-2.3.2.tgz#f0f045e196f69a72f06b25fd3bd39d01c3ce9984"
