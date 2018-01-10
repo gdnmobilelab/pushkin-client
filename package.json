@@ -11,12 +11,10 @@
   "author": "",
   "license": "ISC",
   "peerDependencies": {
-    "treo": "^0.5.1"
-  },
-  "dependencies": {
-    "@types/service_worker_api": "^0.0.9",
+    "treo": "^0.5.1",
     "treo-promise": "1.0.1"
   },
+  "dependencies": {},
   "devDependencies": {
     "typescript": "^2.3.2"
   }

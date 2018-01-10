@@ -1,6 +1,12 @@
 import db from "./db";
 import { key } from "./firebase_key";
 
+class ServiceWorkerContext {
+  registration: any;
+}
+
+declare var self: ServiceWorkerContext;
+
 let subscriptionStore = db.store("subscriptions");
 let configStore = db.store("config");
 
@@ -55,63 +61,70 @@ function pushkinRequest(endpoint, method = "GET", body = null): any {
   });
 }
 
-function tryGetSubscriptionFromStore() {
-  // first attempt is to get the one we already have - before cache to keep it fresh
-  return self.registration.pushManager.getSubscription().then(sub => {
-    if (sub) {
-      console.log("Found live push subscription");
-      // if we've got it, save it, return it
+// need to sort that out
+declare var Promise: any;
+
+function getAndCheckSubscription() {
+
+  return Promise.all([
+    configStore.get<ConfigStoreEntry>("subscription-data"),
+    self.registration.pushManager.getSubscription()
+  ])
+    .then(([storedConfig, currentConfig]) => {
+
+      let currentConfigStringified = currentConfig ? JSON.stringify(currentConfig) : undefined;
+
+      if (!storedConfig || storedConfig.value === currentConfigStringified) {
+        return currentConfig
+      }
+
+      // If the config is different from the one we have stored then all of our
+      // subscription data will now be incorrect. So we need to clear it.
+
+      console.warn("Subscription data has changed, wiping existing subscription records");
+
+      return subscriptionStore.clear()
+        .then(() => {
+          return currentConfig;
+        })
+    })
+    .then((currentConfig) => {
+
+      if (currentConfig) {
+        return currentConfig;
+      }
+
+      return self.registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: key
+      });
+    })
+    .then((definiteConfig) => {
       return configStore
         .put<ConfigStoreEntry>({
           name: "subscription-data",
-          value: JSON.stringify(sub)
+          value: JSON.stringify(definiteConfig)
         })
         .then(() => {
-          return sub;
-        });
-    } else {
-      // now try to get our cached copy
-      return configStore.get<ConfigStoreEntry>("subscription-data").then(obj => {
-        if (obj) {
-          try {
-            console.log("Found cached push subscription");
-            return JSON.parse(obj.value);
-          } catch (err) {
-            console.error("could not deserialize", err);
-          }
-          // if there's no cached copy, we try to get a new subscription
-        }
-        console.log("No push subscription, creating one...");
-        return self.registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: key
-        });
-      });
-    }
-  });
+          return definiteConfig
+        })
+    })
+
 }
 
 function getSubscriptionID() {
-  return configStore.get("cached-subscription-id").then(cached => {
-    // disable for now
-
-    // if (cached) {
-    //     return cached.value;
-    // }
-
-    return tryGetSubscriptionFromStore().then(sub => {
-      if (!sub) {
-        throw new Error("No subscription to check");
-      }
-      return pushkinRequest("/registrations", "POST", {
-        subscription: sub
-      }).then(res => {
-        return configStore
-          .put<ConfigStoreEntry>({ name: "cached-subscription-id", value: res.id })
-          .then(() => {
-            return res.id;
-          });
-      });
+  return getAndCheckSubscription().then(sub => {
+    if (!sub) {
+      throw new Error("No subscription to check");
+    }
+    return pushkinRequest("/registrations", "POST", {
+      subscription: sub
+    }).then(res => {
+      return configStore
+        .put<ConfigStoreEntry>({ name: "cached-subscription-id", value: res.id })
+        .then(() => {
+          return res.id;
+        });
     });
   });
 }
@@ -121,7 +134,7 @@ export function sendBackToMe(opts) {
     let payload = {
       ttl: 60,
       payload: opts.payload,
-      service_worker_url: self.registration.active.scriptURL,
+      service_worker_url: (self as any).location.href,
       priority: "high"
     };
     console.log(payload);
@@ -135,16 +148,33 @@ export function sendBackToMe(opts) {
 
 interface ConfirmOptions {
   confirmation_notification?: any;
+  lzCapable?: boolean;
 }
 
-export function subscribeToTopic(opts) {
-  let confirmOpts: ConfirmOptions = {};
+export interface iOSFallbackNotification {
+  title: string;
+  body: string;
+  attachments?: string[];
+  actions?: string[];
+  collapse_id?: string;
+  silent?: boolean;
+  renotify?: boolean;
+}
+
+export interface SubscribeOptions {
+  topic: string;
+  confirmationPayload?: any;
+  confirmationIOS?: iOSFallbackNotification;
+}
+
+export function subscribeToTopic(opts: SubscribeOptions) {
+  let confirmOpts: ConfirmOptions = { lzCapable: true };
 
   if (opts.confirmationPayload) {
     confirmOpts.confirmation_notification = {
       ttl: 60,
       payload: opts.confirmationPayload,
-      service_worker_url: self.registration.active.scriptURL,
+      service_worker_url: (self as any).location.href,
       priority: "high",
       ios: opts.confirmationIOS
     };
@@ -168,7 +198,12 @@ export function subscribeToTopic(opts) {
   });
 }
 
-export function unsubscribeFromTopic(opts) {
+export interface UnsubscribeOptions {
+  topic: string;
+}
+
+
+export function unsubscribeFromTopic(opts: UnsubscribeOptions) {
   return getSubscriptionID()
     .then(subId => {
       return pushkinRequest(
@@ -182,12 +217,12 @@ export function unsubscribeFromTopic(opts) {
     });
 }
 
-export function getSubscribedTopics(opts) {
-  return subscriptionStore.all<SubscriptionStoreEntry>().then(objs => {
-    return objs.map(o => o.topic_id);
-  });
-  // return getSubscriptionID()
-  // .then((subId) => {
-  //     return pushkinRequest(`/registrations/${encodeURIComponent(subId)}/topics`)
-  // })
+export function getSubscribedTopics() {
+  return getAndCheckSubscription() // doing this for the check, not the get
+    .then(() => {
+      return subscriptionStore.all<SubscriptionStoreEntry>()
+    })
+    .then(objs => {
+      return objs.map(o => o.topic_id);
+    });
 }

@@ -3,7 +3,9 @@
         "target": "es5",
         "outDir": "lib",
         "declaration": true,
-        "moduleResolution": "node"
+        "moduleResolution": "node",
+        "module": "es2015",
+        "sourceMap": true
     },
     "include": [
         "node_modules/treo-typescript-definition/treo.d.ts",
