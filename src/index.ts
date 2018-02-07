@@ -65,31 +65,31 @@ function pushkinRequest(endpoint, method = "GET", body = null): any {
 declare var Promise: any;
 
 function getAndCheckSubscription() {
-
   return Promise.all([
-    configStore.get<ConfigStoreEntry>("subscription-data"),
+    configStore.get("subscription-data"),
     self.registration.pushManager.getSubscription()
   ])
     .then(([storedConfig, currentConfig]) => {
-
-      let currentConfigStringified = currentConfig ? JSON.stringify(currentConfig) : undefined;
+      let currentConfigStringified = currentConfig
+        ? JSON.stringify(currentConfig)
+        : undefined;
 
       if (!storedConfig || storedConfig.value === currentConfigStringified) {
-        return currentConfig
+        return currentConfig;
       }
 
       // If the config is different from the one we have stored then all of our
       // subscription data will now be incorrect. So we need to clear it.
 
-      console.warn("Subscription data has changed, wiping existing subscription records");
+      console.warn(
+        "Subscription data has changed, wiping existing subscription records"
+      );
 
-      return subscriptionStore.clear()
-        .then(() => {
-          return currentConfig;
-        })
+      return subscriptionStore.clear().then(() => {
+        return currentConfig;
+      });
     })
-    .then((currentConfig) => {
-
+    .then(currentConfig => {
       if (currentConfig) {
         return currentConfig;
       }
@@ -99,17 +99,16 @@ function getAndCheckSubscription() {
         applicationServerKey: key
       });
     })
-    .then((definiteConfig) => {
+    .then(definiteConfig => {
       return configStore
-        .put<ConfigStoreEntry>({
+        .put({
           name: "subscription-data",
           value: JSON.stringify(definiteConfig)
         })
         .then(() => {
-          return definiteConfig
-        })
-    })
-
+          return definiteConfig;
+        });
+    });
 }
 
 function getSubscriptionID() {
@@ -121,7 +120,7 @@ function getSubscriptionID() {
       subscription: sub
     }).then(res => {
       return configStore
-        .put<ConfigStoreEntry>({ name: "cached-subscription-id", value: res.id })
+        .put({ name: "cached-subscription-id", value: res.id })
         .then(() => {
           return res.id;
         });
@@ -137,7 +136,6 @@ export function sendBackToMe(opts) {
       service_worker_url: (self as any).location.href,
       priority: "high"
     };
-    console.log(payload);
     return pushkinRequest(
       `/registrations/${subId}?iosFromPayload=true`,
       "POST",
@@ -187,7 +185,7 @@ export function subscribeToTopic(opts: SubscribeOptions) {
       confirmOpts
     ).then(response => {
       return subscriptionStore
-        .put<SubscriptionStoreEntry>({
+        .put({
           topic_id: opts.topic,
           subscribeDate: Date.now()
         })
@@ -201,7 +199,6 @@ export function subscribeToTopic(opts: SubscribeOptions) {
 export interface UnsubscribeOptions {
   topic: string;
 }
-
 
 export function unsubscribeFromTopic(opts: UnsubscribeOptions) {
   return getSubscriptionID()
@@ -220,7 +217,7 @@ export function unsubscribeFromTopic(opts: UnsubscribeOptions) {
 export function getSubscribedTopics() {
   return getAndCheckSubscription() // doing this for the check, not the get
     .then(() => {
-      return subscriptionStore.all<SubscriptionStoreEntry>()
+      return subscriptionStore.all();
     })
     .then(objs => {
       return objs.map(o => o.topic_id);
