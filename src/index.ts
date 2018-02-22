@@ -10,7 +10,7 @@ declare var self: ServiceWorkerContext;
 let subscriptionStore = db.store("subscriptions");
 let configStore = db.store("config");
 
-interface Config {
+export interface Config {
   key?: string;
   host?: string;
 }
@@ -27,12 +27,16 @@ interface SubscriptionStoreEntry {
   subscribeDate: number;
 }
 
-export function setConfig({ key, host }) {
+export function setConfig({ key, host }: Config) {
   config.key = key;
   config.host = host;
 }
 
-function pushkinRequest(endpoint, method = "GET", body = null): any {
+function pushkinRequest(
+  endpoint: string,
+  method = "GET",
+  body: any = null
+): any {
   if (!config.key || !config.host) {
     throw new Error("Must set config variables");
   }
@@ -61,35 +65,42 @@ function pushkinRequest(endpoint, method = "GET", body = null): any {
   });
 }
 
+interface NameValuePair {
+  name: string;
+  value: string;
+}
+
 // need to sort that out
 declare var Promise: any;
 
-function getAndCheckSubscription() {
+function getAndCheckSubscription(): Promise<PushSubscription> {
   return Promise.all([
     configStore.get("subscription-data"),
     self.registration.pushManager.getSubscription()
   ])
-    .then(([storedConfig, currentConfig]) => {
-      let currentConfigStringified = currentConfig
-        ? JSON.stringify(currentConfig)
-        : undefined;
+    .then(
+      ([storedConfig, currentConfig]: [NameValuePair, PushSubscription]) => {
+        let currentConfigStringified = currentConfig
+          ? JSON.stringify(currentConfig)
+          : undefined;
 
-      if (!storedConfig || storedConfig.value === currentConfigStringified) {
-        return currentConfig;
+        if (!storedConfig || storedConfig.value === currentConfigStringified) {
+          return currentConfig;
+        }
+
+        // If the config is different from the one we have stored then all of our
+        // subscription data will now be incorrect. So we need to clear it.
+
+        console.warn(
+          "Subscription data has changed, wiping existing subscription records"
+        );
+
+        return subscriptionStore.clear().then(() => {
+          return currentConfig;
+        });
       }
-
-      // If the config is different from the one we have stored then all of our
-      // subscription data will now be incorrect. So we need to clear it.
-
-      console.warn(
-        "Subscription data has changed, wiping existing subscription records"
-      );
-
-      return subscriptionStore.clear().then(() => {
-        return currentConfig;
-      });
-    })
-    .then(currentConfig => {
+    )
+    .then((currentConfig: PushSubscription) => {
       if (currentConfig) {
         return currentConfig;
       }
@@ -99,7 +110,7 @@ function getAndCheckSubscription() {
         applicationServerKey: key
       });
     })
-    .then(definiteConfig => {
+    .then((definiteConfig: PushSubscription) => {
       return configStore
         .put({
           name: "subscription-data",
@@ -118,7 +129,7 @@ function getSubscriptionID() {
     }
     return pushkinRequest("/registrations", "POST", {
       subscription: sub
-    }).then(res => {
+    }).then((res: any) => {
       return configStore
         .put({ name: "cached-subscription-id", value: res.id })
         .then(() => {
@@ -128,7 +139,7 @@ function getSubscriptionID() {
   });
 }
 
-export function sendBackToMe(opts) {
+export function sendBackToMe(opts: any) {
   return getSubscriptionID().then(subId => {
     let payload = {
       ttl: 60,
@@ -183,7 +194,7 @@ export function subscribeToTopic(opts: SubscribeOptions) {
       `/topics/${opts.topic}/subscribers/${encodeURIComponent(subId)}`,
       "POST",
       confirmOpts
-    ).then(response => {
+    ).then((response: any) => {
       return subscriptionStore
         .put({
           topic_id: opts.topic,
@@ -219,7 +230,7 @@ export function getSubscribedTopics() {
     .then(() => {
       return subscriptionStore.all();
     })
-    .then(objs => {
-      return objs.map(o => o.topic_id);
+    .then((objs: any) => {
+      return objs.map((o: any) => o.topic_id);
     });
 }
