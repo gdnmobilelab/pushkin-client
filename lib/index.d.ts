@@ -1,8 +1,9 @@
-export declare function setConfig({key, host}: {
-    key: any;
-    host: any;
-}): void;
-export declare function sendBackToMe(opts: any): any;
+export interface Config {
+    key?: string;
+    host?: string;
+}
+export declare function setConfig(cfg: Config): void;
+export declare function sendBackToMe(opts: any): Promise<void>;
 export interface iOSFallbackNotification {
     title: string;
     body: string;
@@ -17,9 +18,9 @@ export interface SubscribeOptions {
     confirmationPayload?: any;
     confirmationIOS?: iOSFallbackNotification;
 }
-export declare function subscribeToTopic(opts: SubscribeOptions): any;
+export declare function subscribeToTopic(opts: SubscribeOptions): Promise<boolean>;
 export interface UnsubscribeOptions {
     topic: string;
 }
-export declare function unsubscribeFromTopic(opts: UnsubscribeOptions): any;
-export declare function getSubscribedTopics(): any;
+export declare function unsubscribeFromTopic(opts: UnsubscribeOptions): Promise<boolean>;
+export declare function getSubscribedTopics(): Promise<string[]>;

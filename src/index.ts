@@ -1,16 +1,8 @@
-import db from "./db";
+import { getDatabase } from "./db";
 import { key } from "./firebase_key";
+import { getRegistration } from "./registration";
 
-class ServiceWorkerContext {
-  registration: any;
-}
-
-declare var self: ServiceWorkerContext;
-
-let subscriptionStore = db.store("subscriptions");
-let configStore = db.store("config");
-
-interface Config {
+export interface Config {
   key?: string;
   host?: string;
 }
@@ -27,12 +19,12 @@ interface SubscriptionStoreEntry {
   subscribeDate: number;
 }
 
-export function setConfig({ key, host }) {
-  config.key = key;
-  config.host = host;
+export function setConfig(cfg: Config) {
+  config.key = cfg.key;
+  config.host = cfg.host;
 }
 
-function pushkinRequest(endpoint, method = "GET", body = null): any {
+async function pushkinRequest(endpoint: string, method = "GET", body: any = null) {
   if (!config.key || !config.host) {
     throw new Error("Must set config variables");
   }
@@ -41,107 +33,128 @@ function pushkinRequest(endpoint, method = "GET", body = null): any {
   headers.set("Authorization", config.key);
   headers.set("Content-Type", "application/json");
 
-  return fetch(config.host + endpoint, {
+  let response = await fetch(config.host + endpoint, {
     method: method,
     mode: "cors",
     headers: headers,
     body: body ? JSON.stringify(body) : null
-  }).then(response => {
-    if (!response.status || response.status < 200 || response.status > 299) {
-      return response.text().then(text => {
-        throw new Error(text);
-      });
-    }
-    return response.json().then(json => {
-      if (json.errorMessage) {
-        throw new Error(json.errorMessage);
-      }
-      return json;
-    });
   });
+
+  if (!response.status || response.status < 200 || response.status > 299) {
+    let text = await response.text();
+    throw new Error(text);
+  }
+
+  let json = await response.json();
+
+  if (json.errorMessage) {
+    throw new Error(json.errorMessage);
+  }
+
+  return json;
 }
 
-// need to sort that out
-declare var Promise: any;
-
-function getAndCheckSubscription() {
-  return Promise.all([
-    configStore.get("subscription-data"),
-    self.registration.pushManager.getSubscription()
-  ])
-    .then(([storedConfig, currentConfig]) => {
-      let currentConfigStringified = currentConfig
-        ? JSON.stringify(currentConfig)
-        : undefined;
-
-      if (!storedConfig || storedConfig.value === currentConfigStringified) {
-        return currentConfig;
-      }
-
-      // If the config is different from the one we have stored then all of our
-      // subscription data will now be incorrect. So we need to clear it.
-
-      console.warn(
-        "Subscription data has changed, wiping existing subscription records"
-      );
-
-      return subscriptionStore.clear().then(() => {
-        return currentConfig;
-      });
-    })
-    .then(currentConfig => {
-      if (currentConfig) {
-        return currentConfig;
-      }
-
-      return self.registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: key
-      });
-    })
-    .then(definiteConfig => {
-      return configStore
-        .put({
-          name: "subscription-data",
-          value: JSON.stringify(definiteConfig)
-        })
-        .then(() => {
-          return definiteConfig;
-        });
-    });
+enum DatabaseKeys {
+  SUBSCRIPTION_DATA = "subscription_data",
+  CACHED_SUBSCRIPTION_ID = "cached_subscription_id"
 }
 
-function getSubscriptionID() {
-  return getAndCheckSubscription().then(sub => {
-    if (!sub) {
-      throw new Error("No subscription to check");
-    }
-    return pushkinRequest("/registrations", "POST", {
-      subscription: sub
-    }).then(res => {
-      return configStore
-        .put({ name: "cached-subscription-id", value: res.id })
-        .then(() => {
-          return res.id;
-        });
-    });
-  });
+declare interface NameValuePair {
+  name: string;
+  value: string;
 }
 
-export function sendBackToMe(opts) {
-  return getSubscriptionID().then(subId => {
-    let payload = {
-      ttl: 60,
-      payload: opts.payload,
-      service_worker_url: (self as any).location.href,
-      priority: "high"
-    };
-    return pushkinRequest(
-      `/registrations/${subId}?iosFromPayload=true`,
-      "POST",
-      payload
-    );
+declare interface SavedSubscription {
+  topic_id: string;
+  subscribeDate: number;
+}
+
+async function getDBStores() {
+  let db = await getDatabase();
+
+  return {
+    configStore: await db.store("config"),
+    subscriptionStore: await db.store("subscriptions")
+  };
+}
+
+async function getAndCheckSubscription() {
+  let { configStore, subscriptionStore } = await getDBStores();
+
+  let storedConfig = await configStore.get<NameValuePair>(DatabaseKeys.SUBSCRIPTION_DATA);
+  let registration = await getRegistration();
+
+  let currentConfig: PushSubscription | undefined = await registration.pushManager.getSubscription();
+
+  // We stringify for a very simple comparison, rather than deep inspecting an object
+  let currentConfigStringified = currentConfig ? JSON.stringify(currentConfig) : undefined;
+
+  if (storedConfig && storedConfig.value !== currentConfigStringified) {
+    // If our registration has been unregistered and re-registered we now have different
+    // push keys. If that's the case we want to delete all existing subscription data
+    // because it isn't accurate any more.
+
+    console.warn("Subscription data has changed, wiping existing subscription records");
+
+    await subscriptionStore.clear();
+  }
+  console.log("cleared, if applicable");
+  let definiteConfig: PushSubscription;
+
+  if (currentConfig) {
+    console.log("have a config!");
+    definiteConfig = currentConfig;
+  } else {
+    console.log("dont have a config, so will get", registration);
+    // If we haven't subscribed yet, then subscribe.
+
+    definiteConfig = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: key
+    });
+    console.log("got?");
+  }
+  console.log("putting");
+  await configStore.put({
+    name: DatabaseKeys.SUBSCRIPTION_DATA,
+    value: JSON.stringify(definiteConfig)
   });
+  console.log("returning");
+  return definiteConfig;
+}
+
+async function getSubscriptionID() {
+  let sub = await getAndCheckSubscription();
+
+  if (!sub) {
+    throw new Error("No subscription to check");
+  }
+
+  let res = await pushkinRequest("/registrations", "POST", {
+    subscription: sub
+  });
+
+  let { configStore } = await getDBStores();
+
+  await configStore.put({
+    name: DatabaseKeys.CACHED_SUBSCRIPTION_ID,
+    value: res.id
+  });
+
+  return res.id;
+}
+
+export async function sendBackToMe(opts: any) {
+  let subId = await getSubscriptionID();
+
+  let payload = {
+    ttl: 60,
+    payload: opts.payload,
+    service_worker_url: self.location.href,
+    priority: "high"
+  };
+
+  await pushkinRequest(`/registrations/${encodeURIComponent(subId)}?iosFromPayload=true`, "POST", payload);
 }
 
 interface ConfirmOptions {
@@ -165,7 +178,7 @@ export interface SubscribeOptions {
   confirmationIOS?: iOSFallbackNotification;
 }
 
-export function subscribeToTopic(opts: SubscribeOptions) {
+export async function subscribeToTopic(opts: SubscribeOptions) {
   let confirmOpts: ConfirmOptions = { lzCapable: true };
 
   if (opts.confirmationPayload) {
@@ -178,48 +191,47 @@ export function subscribeToTopic(opts: SubscribeOptions) {
     };
   }
 
-  return getSubscriptionID().then(subId => {
-    return pushkinRequest(
-      `/topics/${opts.topic}/subscribers/${encodeURIComponent(subId)}`,
-      "POST",
-      confirmOpts
-    ).then(response => {
-      return subscriptionStore
-        .put({
-          topic_id: opts.topic,
-          subscribeDate: Date.now()
-        })
-        .then(() => {
-          return response;
-        });
-    });
+  let subId = await getSubscriptionID();
+
+  let response = await pushkinRequest(
+    `/topics/${opts.topic}/subscribers/${encodeURIComponent(subId)}`,
+    "POST",
+    confirmOpts
+  );
+
+  let { subscriptionStore } = await getDBStores();
+
+  await subscriptionStore.put<SavedSubscription>({
+    topic_id: opts.topic,
+    subscribeDate: Date.now()
   });
+
+  return true;
 }
 
 export interface UnsubscribeOptions {
   topic: string;
 }
 
-export function unsubscribeFromTopic(opts: UnsubscribeOptions) {
-  return getSubscriptionID()
-    .then(subId => {
-      return pushkinRequest(
-        `/topics/${opts.topic}/subscribers/${encodeURIComponent(subId)}`,
-        "DELETE",
-        opts
-      );
-    })
-    .then(() => {
-      return subscriptionStore.del(opts.topic);
-    });
+export async function unsubscribeFromTopic(opts: UnsubscribeOptions) {
+  let subId = await getSubscriptionID();
+
+  await pushkinRequest(`/topics/${opts.topic}/subscribers/${encodeURIComponent(subId)}`, "DELETE", opts);
+
+  let { subscriptionStore } = await getDBStores();
+
+  await subscriptionStore.del(opts.topic);
+
+  return true;
 }
 
-export function getSubscribedTopics() {
-  return getAndCheckSubscription() // doing this for the check, not the get
-    .then(() => {
-      return subscriptionStore.all();
-    })
-    .then(objs => {
-      return objs.map(o => o.topic_id);
-    });
+export async function getSubscribedTopics() {
+  // check we have a subscription and that it's still valid
+  await getAndCheckSubscription();
+
+  let { subscriptionStore } = await getDBStores();
+
+  let allEntries = await subscriptionStore.all<SavedSubscription>();
+
+  return allEntries.map(o => o.topic_id);
 }

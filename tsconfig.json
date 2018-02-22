@@ -1,14 +1,14 @@
 {
-    "compilerOptions": {
-        "target": "es5",
-        "outDir": "lib",
-        "declaration": true,
-        "moduleResolution": "node",
-        "module": "es2015",
-        "sourceMap": true
-    },
-    "include": [
-        "node_modules/treo-typescript-definition/treo.d.ts",
-        "src/**/*"
-    ]
+  "compilerOptions": {
+    "target": "es5",
+    "outDir": "lib",
+    "declaration": true,
+    "moduleResolution": "node",
+    "module": "es2015",
+    "sourceMap": true,
+    "lib": ["dom", "es6"],
+    "strict": true,
+    "importHelpers": true
+  },
+  "include": ["node_modules/treo-typescript-definition/treo.d.ts", "src/**/*"]
 }
